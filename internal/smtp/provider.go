@@ -74,7 +74,7 @@ func (d *netDialer) Dial(addr string) (Client, error) {
 	host, _, _ := net.SplitHostPort(addr)
 	c, err := smtp.NewClient(conn, host)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("creating SMTP client: %w", err)
 	}
 	return &clientWrapper{c: c}, nil
@@ -286,13 +286,13 @@ func (p *Plugin) DescribeWhatIf(_ context.Context, providerName string, input ma
 	var sb strings.Builder
 	sb.WriteString("Would send email")
 	if subject != "" {
-		sb.WriteString(fmt.Sprintf(" with subject %q", subject))
+		fmt.Fprintf(&sb, " with subject %q", subject)
 	}
 	if len(to) > 0 {
-		sb.WriteString(fmt.Sprintf(" to %s", strings.Join(to, ", ")))
+		fmt.Fprintf(&sb, " to %s", strings.Join(to, ", "))
 	}
 	if host != "" {
-		sb.WriteString(fmt.Sprintf(" via %s", host))
+		fmt.Fprintf(&sb, " via %s", host)
 	}
 	if maxRetries > 0 {
 		sb.WriteString(fmt.Sprintf(" (up to %d retries)", maxRetries))
@@ -486,7 +486,7 @@ func (p *Plugin) trySend(params *smtpParams) error {
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if params.startTLS {
 		tlsCfg := &tls.Config{
@@ -527,7 +527,7 @@ func (p *Plugin) trySend(params *smtpParams) error {
 
 	msg := buildMessage(params)
 	if _, err := w.Write(msg); err != nil {
-		w.Close()
+		_ = w.Close()
 		return fmt.Errorf("writing message: %w", err)
 	}
 
@@ -637,11 +637,7 @@ func isTransient(err error) bool {
 
 	// Check for net.Error temporary flag.
 	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return true
-	}
-
-	return false
+	return errors.As(err, &netErr)
 }
 
 // containsCRLF reports whether s contains CR or LF characters.
