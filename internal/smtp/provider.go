@@ -74,7 +74,7 @@ func (d *netDialer) Dial(addr string) (Client, error) {
 	host, _, _ := net.SplitHostPort(addr)
 	c, err := smtp.NewClient(conn, host)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("creating SMTP client: %w", err)
 	}
 	return &clientWrapper{c: c}, nil
@@ -286,16 +286,16 @@ func (p *Plugin) DescribeWhatIf(_ context.Context, providerName string, input ma
 	var sb strings.Builder
 	sb.WriteString("Would send email")
 	if subject != "" {
-		sb.WriteString(fmt.Sprintf(" with subject %q", subject))
+		fmt.Fprintf(&sb, " with subject %q", subject)
 	}
 	if len(to) > 0 {
-		sb.WriteString(fmt.Sprintf(" to %s", strings.Join(to, ", ")))
+		fmt.Fprintf(&sb, " to %s", strings.Join(to, ", "))
 	}
 	if host != "" {
-		sb.WriteString(fmt.Sprintf(" via %s", host))
+		fmt.Fprintf(&sb, " via %s", host)
 	}
 	if maxRetries > 0 {
-		sb.WriteString(fmt.Sprintf(" (up to %d retries)", maxRetries))
+		fmt.Fprintf(&sb, " (up to %d retries)", maxRetries)
 	}
 	return sb.String(), nil
 }
@@ -486,7 +486,7 @@ func (p *Plugin) trySend(params *smtpParams) error {
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if params.startTLS {
 		tlsCfg := &tls.Config{
@@ -527,7 +527,7 @@ func (p *Plugin) trySend(params *smtpParams) error {
 
 	msg := buildMessage(params)
 	if _, err := w.Write(msg); err != nil {
-		w.Close()
+		_ = w.Close()
 		return fmt.Errorf("writing message: %w", err)
 	}
 
@@ -541,15 +541,15 @@ func (p *Plugin) trySend(params *smtpParams) error {
 // buildMessage constructs an RFC 5322 email message from parameters.
 func buildMessage(params *smtpParams) []byte {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().UTC().Format(time.RFC1123Z)))
-	sb.WriteString(fmt.Sprintf("Message-ID: <%d.%s>\r\n", time.Now().UnixNano(), params.from))
-	sb.WriteString(fmt.Sprintf("From: %s\r\n", params.from))
-	sb.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(params.to, ", ")))
+	fmt.Fprintf(&sb, "Date: %s\r\n", time.Now().UTC().Format(time.RFC1123Z))
+	fmt.Fprintf(&sb, "Message-ID: <%d.%s>\r\n", time.Now().UnixNano(), params.from)
+	fmt.Fprintf(&sb, "From: %s\r\n", params.from)
+	fmt.Fprintf(&sb, "To: %s\r\n", strings.Join(params.to, ", "))
 	if len(params.cc) > 0 {
-		sb.WriteString(fmt.Sprintf("Cc: %s\r\n", strings.Join(params.cc, ", ")))
+		fmt.Fprintf(&sb, "Cc: %s\r\n", strings.Join(params.cc, ", "))
 	}
-	sb.WriteString(fmt.Sprintf("Subject: %s\r\n", params.subject))
-	sb.WriteString(fmt.Sprintf("Content-Type: %s; charset=UTF-8\r\n", params.contentType))
+	fmt.Fprintf(&sb, "Subject: %s\r\n", params.subject)
+	fmt.Fprintf(&sb, "Content-Type: %s; charset=UTF-8\r\n", params.contentType)
 	sb.WriteString("MIME-Version: 1.0\r\n")
 	sb.WriteString("\r\n")
 	sb.WriteString(params.body)
@@ -637,11 +637,7 @@ func isTransient(err error) bool {
 
 	// Check for net.Error temporary flag.
 	var netErr net.Error
-	if errors.As(err, &netErr) {
-		return true
-	}
-
-	return false
+	return errors.As(err, &netErr)
 }
 
 // containsCRLF reports whether s contains CR or LF characters.
